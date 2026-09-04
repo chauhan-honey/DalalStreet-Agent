@@ -1,0 +1,34 @@
+dalalstreet-agent/
+│
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                   # FastAPI application root & CORS
+│   │   ├── api/
+│   │   │   ├── __init__.py
+│   │   │   └── v1/
+│   │   │       ├── __init__.py
+│   │   │       └── endpoints.py      # SSE streaming routes
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py             # Settings, env parsing
+│   │   │   └── state.py              # LangGraph AgentState TypedDict
+│   │   ├── mcp_server/
+│   │   │   ├── __init__.py
+│   │   │   └── stock_service.py      # FastMCP tool server wrapping yfinance
+│   │   ├── rag/
+│   │   │   ├── __init__.py
+│   │   │   └── vector_store.py       # PyMuPDF parser & ChromaDB store
+│   │   └── graph.py                  # LangGraph compiled state machine
+│   └── requirements.txt
+│
+├── frontend/
+│   └── app.py                        # Streamlit interactive UI
+│
+├── data/
+│   ├── annual_reports/               # PDF directory (e.g., TCS_FY24.pdf)
+│   └── chroma_db/                    # Local persistent ChromaDB files
+│
+├── .env.example
+├── .gitignore
+└── README.md

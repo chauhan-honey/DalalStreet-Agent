@@ -1,0 +1,19 @@
+# Secrets & local env
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local persistent vector store & source PDFs
+data/chroma_db/
+data/annual_reports/*.pdf
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
