@@ -1,0 +1,13 @@
+# DEV / CI DEPENDENCIES
+# ======================
+# Installed by CI (Module 4) and by you locally when running the test suite.
+# NOT installed inside the production Docker image — pytest is a development
+# tool, not something the running app needs at 2am in production.
+#
+# `-r backend/requirements.txt` pulls in everything the backend needs to run,
+# so one `pip install -r requirements-dev.txt` gives you a complete local dev
+# environment (runtime deps + test deps) in a single command.
+-r backend/requirements.txt
+
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

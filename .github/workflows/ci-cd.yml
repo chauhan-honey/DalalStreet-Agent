@@ -1,0 +1,136 @@
+name: CI/CD
+
+# Runs on every push to main (full pipeline: test -> build -> deploy) and on
+# every pull request (test only — we never deploy code that hasn't been
+# merged). This is the standard CI/CD trigger shape: PRs get fast feedback,
+# main is the only branch that ever reaches production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Default to read-only repo access; individual jobs opt into more (packages:
+# write to push images, id-token: write for Azure's OIDC exchange) only where
+# they actually need it. Least privilege, applied to the pipeline itself.
+permissions:
+  contents: read
+
+jobs:
+  # ---------- CI: does the code even work? ----------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  # ---------- CD, part 1: build the image once, reuse it everywhere ----------
+  build-and-push:
+    needs: test
+    # Only push+deploy from main itself, and only on an actual push (not a
+    # PR from a fork, which shouldn't get write access to our registry).
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Buildx is Docker's modern builder — needed to use the GitHub Actions
+      # cache backend below, which is the single biggest speedup available
+      # for CI Docker builds (reuses unchanged layers between runs instead
+      # of reinstalling torch/transformers/etc. from scratch every time).
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN is auto-generated per workflow run and scoped only
+          # to this repo — no separate registry secret to manage or leak.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # ghcr.io requires the repo path to be lowercase; this action
+          # handles that normalization automatically.
+          images: ghcr.io/${{ github.repository_owner }}/dalalstreet-agent
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------- CD, part 2: ship that image to Azure Container Apps ----------
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for Azure's OIDC token exchange
+      contents: read
+    steps:
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Container Apps
+        run: |
+          az extension add --name containerapp --upgrade -y
+
+          # Image tag: the first line of docker/metadata-action's multi-line
+          # output, i.e. the sha-based tag (stable/unique per commit).
+          IMAGE=$(echo "${{ needs.build-and-push.outputs.image }}" | head -n1)
+
+          if az containerapp show --name dalalstreet-agent-backend --resource-group dalalstreet-agent-rg >/dev/null 2>&1; then
+            echo "App exists — updating image only."
+            az containerapp update \
+              --name dalalstreet-agent-backend \
+              --resource-group dalalstreet-agent-rg \
+              --image "$IMAGE"
+          else
+            echo "First deploy — creating the app."
+            az containerapp create \
+              --name dalalstreet-agent-backend \
+              --resource-group dalalstreet-agent-rg \
+              --environment dalalstreet-env \
+              --image "$IMAGE" \
+              --target-port 8000 \
+              --ingress external \
+              --cpu 1.0 --memory 2Gi \
+              --min-replicas 0 --max-replicas 1 \
+              --secrets google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
+              --env-vars GOOGLE_API_KEY=secretref:google-api-key
+          fi
+
+          # Keep the secret in sync on every deploy too (covers key rotation
+          # — a no-op if the value hasn't changed since the last run).
+          az containerapp secret set \
+            --name dalalstreet-agent-backend \
+            --resource-group dalalstreet-agent-rg \
+            --secrets google-api-key="${{ secrets.GOOGLE_API_KEY }}"

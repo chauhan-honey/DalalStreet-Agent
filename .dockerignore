@@ -1,0 +1,36 @@
+# DOCKERIGNORE — deliberately different from .gitignore.
+# .gitignore keeps data/chroma_db/ and the PDFs OUT of git (too big, and
+# derived data doesn't belong in source control). The Dockerfile COPYs those
+# same paths INTO the image on purpose (see Dockerfile comments) — so they
+# must NOT be excluded here, or the image would ship with an empty vector
+# store and the app would have nothing to retrieve against.
+
+# Never ship secrets or local env into the image.
+.env
+.env.*
+!.env.example
+
+# Local Python virtualenv — the image builds its own inside the Dockerfile.
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Version control / CI / editor / AI-assistant metadata — irrelevant at runtime.
+.git/
+.github/
+.claude/
+.devin/
+.idea/
+.vscode/
+.DS_Store
+
+# Reference material and docs — not needed inside the running container.
+plan_by_gemini/
+CODE_WALKTHROUGH.md
+README.md
+
+# Tests run in CI against the source tree, not inside the shipped image.
+tests/
