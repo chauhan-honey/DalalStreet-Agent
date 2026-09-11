@@ -114,7 +114,19 @@ jobs:
           IMAGE=$(echo "${{ needs.build-and-push.outputs.image }}" | head -n1)
 
           if az containerapp show --name dalalstreet-agent-backend --resource-group dalalstreet-agent-rg >/dev/null 2>&1; then
-            echo "App exists — updating image + secrets/env-vars."
+            echo "App exists — syncing secrets, then updating image + env-vars."
+            # Secrets must exist on the app BEFORE anything can reference them
+            # via secretref: below — this create-or-update secret store is a
+            # separate call from wiring env-vars to it (that bit us here: a
+            # secret added after the app already existed didn't exist yet
+            # when --set-env-vars tried to point at it).
+            az containerapp secret set \
+              --name dalalstreet-agent-backend \
+              --resource-group dalalstreet-agent-rg \
+              --secrets \
+                google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
+                backend-api-key="${{ secrets.BACKEND_API_KEY }}"
+
             az containerapp update \
               --name dalalstreet-agent-backend \
               --resource-group dalalstreet-agent-rg \
@@ -140,14 +152,3 @@ jobs:
                 GOOGLE_API_KEY=secretref:google-api-key \
                 BACKEND_API_KEY=secretref:backend-api-key
           fi
-
-          # Keep secret VALUES in sync on every deploy too (the block above
-          # only wires which secret an env var points at; this is what
-          # actually updates the value — covers rotation, and lets a secret
-          # added after the app already existed reach the running container).
-          az containerapp secret set \
-            --name dalalstreet-agent-backend \
-            --resource-group dalalstreet-agent-rg \
-            --secrets \
-              google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
-              backend-api-key="${{ secrets.BACKEND_API_KEY }}"
