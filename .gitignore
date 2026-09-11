@@ -9,11 +9,13 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Local persistent vector store & source PDFs
-data/chroma_db/
-data/annual_reports/*.pdf
+# NOTE: data/chroma_db/ and data/annual_reports/*.pdf are intentionally
+# tracked in git (via Git LFS — see .gitattributes), not ignored. The Docker
+# build bakes them into the image (Azure Container Apps has no writable
+# persistent disk), so CI's checkout needs them present in the repo.
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
+.claude/scheduled_tasks.lock

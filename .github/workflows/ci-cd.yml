@@ -47,6 +47,12 @@ jobs:
       image: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The Dockerfile bakes in data/chroma_db/ and the source PDFs,
+          # which are Git-LFS-tracked (see .gitattributes) — without this,
+          # checkout only fetches LFS *pointer* files (a few bytes each),
+          # not the actual binary content the Docker build needs.
+          lfs: true
 
       # Buildx is Docker's modern builder — needed to use the GitHub Actions
       # cache backend below, which is the single biggest speedup available
