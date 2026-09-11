@@ -114,11 +114,14 @@ jobs:
           IMAGE=$(echo "${{ needs.build-and-push.outputs.image }}" | head -n1)
 
           if az containerapp show --name dalalstreet-agent-backend --resource-group dalalstreet-agent-rg >/dev/null 2>&1; then
-            echo "App exists — updating image only."
+            echo "App exists — updating image + secrets/env-vars."
             az containerapp update \
               --name dalalstreet-agent-backend \
               --resource-group dalalstreet-agent-rg \
-              --image "$IMAGE"
+              --image "$IMAGE" \
+              --set-env-vars \
+                GOOGLE_API_KEY=secretref:google-api-key \
+                BACKEND_API_KEY=secretref:backend-api-key
           else
             echo "First deploy — creating the app."
             az containerapp create \
@@ -130,13 +133,21 @@ jobs:
               --ingress external \
               --cpu 1.0 --memory 2Gi \
               --min-replicas 0 --max-replicas 1 \
-              --secrets google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
-              --env-vars GOOGLE_API_KEY=secretref:google-api-key
+              --secrets \
+                google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
+                backend-api-key="${{ secrets.BACKEND_API_KEY }}" \
+              --env-vars \
+                GOOGLE_API_KEY=secretref:google-api-key \
+                BACKEND_API_KEY=secretref:backend-api-key
           fi
 
-          # Keep the secret in sync on every deploy too (covers key rotation
-          # — a no-op if the value hasn't changed since the last run).
+          # Keep secret VALUES in sync on every deploy too (the block above
+          # only wires which secret an env var points at; this is what
+          # actually updates the value — covers rotation, and lets a secret
+          # added after the app already existed reach the running container).
           az containerapp secret set \
             --name dalalstreet-agent-backend \
             --resource-group dalalstreet-agent-rg \
-            --secrets google-api-key="${{ secrets.GOOGLE_API_KEY }}"
+            --secrets \
+              google-api-key="${{ secrets.GOOGLE_API_KEY }}" \
+              backend-api-key="${{ secrets.BACKEND_API_KEY }}"

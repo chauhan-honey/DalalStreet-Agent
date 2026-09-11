@@ -30,15 +30,38 @@ WHERE THIS SITS IN THE PROJECT (the flow)
 """
 import asyncio
 import json
+import secrets
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from backend.app.core.config import settings
 from backend.app.graph import compiled_graph  # the compiled LangGraph workflow
 
 # A router collects the endpoints defined below; main.py mounts it on the app.
 router = APIRouter()
+
+
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Guards /research/stream so it isn't a free-for-all on the public internet.
+
+    Deployed with --ingress external (needed so the Streamlit frontend, hosted
+    on a completely different platform, can reach it), this endpoint has no
+    network-level privacy — anyone with the URL could otherwise trigger real
+    Gemini API calls against our free-tier quota. The frontend sends the same
+    key back as the X-API-Key header (see frontend/app.py).
+
+    If BACKEND_API_KEY isn't set at all (e.g. local `uvicorn --reload`, never
+    exposed publicly), the check is skipped — convenience for local dev.
+    Whenever a key IS configured (always true in the deployed container), a
+    missing/wrong header is rejected. secrets.compare_digest avoids leaking
+    the key's length/contents through response-time differences.
+    """
+    if not settings.BACKEND_API_KEY:
+        return
+    if not x_api_key or not secrets.compare_digest(x_api_key, settings.BACKEND_API_KEY):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
 
 class ResearchRequest(BaseModel):
@@ -63,7 +86,7 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@router.post("/research/stream")
+@router.post("/research/stream", dependencies=[Depends(require_api_key)])
 async def stream_financial_audit(req: ResearchRequest):
     """Run the full agent workflow and stream each node's output as it completes.
 

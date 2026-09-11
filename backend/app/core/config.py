@@ -68,6 +68,13 @@ class Settings:
     # passes the loop is forced to stop, preventing an endless (and costly) cycle.
     MAX_CRITIC_ITERATIONS: int = 2
 
+    # Shared-secret key the Streamlit frontend must send (as an X-API-Key
+    # header) to call /research/stream. Deployed on the public internet with
+    # no other access control, this endpoint would otherwise let any stranger
+    # with the URL trigger real Gemini API calls against our free-tier quota —
+    # see endpoints.py's require_api_key dependency for the enforcement side.
+    BACKEND_API_KEY: str = os.getenv("BACKEND_API_KEY", "")
+
 
 # Build the ONE shared settings instance. Importing modules use this object.
 settings = Settings()
