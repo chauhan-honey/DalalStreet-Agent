@@ -22,8 +22,11 @@ HOW IT TALKS TO THE BACKEND (the flow)
     planner ▸ rag_worker ▸ market_worker ▸ critic ▸ synthesizer. The synthesizer
     frame carries the final markdown report.
 
-    The backend address is read from the BACKEND_URL env var so the same UI works
-    locally or against a deployed API.
+    The backend address is read from BACKEND_URL, and the shared auth secret
+    from BACKEND_API_KEY (see _get_config below for where these come from).
+    The backend requires that key as an X-API-Key header on /research/stream
+    — deployed on the public internet with no other access control, without
+    it anyone with the URL could trigger real Gemini API calls on our quota.
 """
 import json
 import os
@@ -34,9 +37,29 @@ import streamlit as st
 # Configure the browser tab and page layout. Must be the first Streamlit call.
 st.set_page_config(page_title="DalalStreet Agent", layout="wide", page_icon="📈")
 
+
+def _get_config(key: str, default: str = "") -> str:
+    """Read a config value from Streamlit secrets first, then env vars.
+
+    Streamlit Community Cloud has no plain "environment variables" panel —
+    config there is set via its Secrets manager, read through st.secrets.
+    Locally (plain `streamlit run`), there's usually no secrets.toml at all,
+    and st.secrets raises in that case, so we fall back to os.getenv (which
+    reads from a real env var, or your local .env if something already
+    loaded it) — one function that works in both places unmodified.
+    """
+    try:
+        if key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return os.getenv(key, default)
+
+
 # Where the backend lives. Defaults to localhost; override with BACKEND_URL to
 # point at a deployed API. STREAM_ENDPOINT is the specific route we POST to.
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = _get_config("BACKEND_URL", "http://localhost:8000")
+BACKEND_API_KEY = _get_config("BACKEND_API_KEY", "")
 STREAM_ENDPOINT = f"{BACKEND_URL}/api/v1/research/stream"
 
 # Page header.
@@ -140,11 +163,21 @@ if run_button:
     # The JSON body the backend's ResearchRequest model expects.
     payload = {"company_name": company_choice, "ticker": ticker, "user_query": query}
 
+    headers = {"X-API-Key": BACKEND_API_KEY} if BACKEND_API_KEY else {}
     try:
         # stream=True keeps the HTTP connection open so we can read SSE frames as
         # they arrive rather than waiting for the whole response.
-        with requests.post(STREAM_ENDPOINT, json=payload, stream=True, timeout=180) as resp:
-            # Raise if the backend returned an HTTP error status (4xx/5xx).
+        with requests.post(STREAM_ENDPOINT, json=payload, headers=headers, stream=True, timeout=180) as resp:
+            if resp.status_code == 401:
+                # Distinguish "wrong/missing key" from a generic connection
+                # failure so a misconfigured secret is obvious, not a mystery.
+                status_box.update(label="Authentication Error", state="error")
+                st.error(
+                    "Backend rejected the request (401 Unauthorized) — BACKEND_API_KEY "
+                    "in this app's secrets doesn't match the backend's configured key."
+                )
+                st.stop()
+            # Raise if the backend returned any other HTTP error status (4xx/5xx).
             resp.raise_for_status()
             # Iterate the response line by line as the server pushes frames.
             for line in resp.iter_lines():
