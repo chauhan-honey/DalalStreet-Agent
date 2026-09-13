@@ -75,6 +75,19 @@ class Settings:
     # see endpoints.py's require_api_key dependency for the enforcement side.
     BACKEND_API_KEY: str = os.getenv("BACKEND_API_KEY", "")
 
+    # Browser origins allowed to call this API cross-origin (see main.py's
+    # CORS middleware). Comma-separated; defaults to the deployed Streamlit
+    # frontend plus localhost (for local dev against a deployed or local
+    # backend). Override via ALLOWED_ORIGINS if the frontend ever moves.
+    ALLOWED_ORIGINS: list[str] = [
+        origin.strip()
+        for origin in os.getenv(
+            "ALLOWED_ORIGINS",
+            "https://dalalstreet-agent.streamlit.app,http://localhost:8501",
+        ).split(",")
+        if origin.strip()
+    ]
+
 
 # Build the ONE shared settings instance. Importing modules use this object.
 settings = Settings()

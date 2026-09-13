@@ -17,14 +17,23 @@ WHAT IT DOES (only three things — kept deliberately thin)
 
 WHAT IS CORS
     Cross-Origin Resource Sharing. Browsers block a page served from one origin
-    (e.g. the Streamlit app on :8501) from calling an API on a different origin
-    (:8000) unless the API explicitly allows it. The middleware below grants that
-    permission. "*" (allow all) is fine for local development.
+    (e.g. the Streamlit app on streamlit.app) from calling an API on a different
+    origin (this backend, on azurecontainerapps.io) unless the API explicitly
+    allows it. The middleware below grants that permission — restricted to the
+    real frontend origin(s) in settings.ALLOWED_ORIGINS, not "*" (allow-all).
+    "*" plus credentialed requests is actually worse than it sounds: browsers
+    forbid literally combining them, so CORS libraries (Starlette's included)
+    fall back to reflecting back whatever Origin header the request sent —
+    i.e. "trust any origin" once credentials are involved. We don't use
+    cookie/session auth at all (just the X-API-Key header, which CORS
+    "credentials" doesn't gate), so allow_credentials=False sidesteps that
+    whole class of misconfiguration rather than merely narrowing it.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.endpoints import router as api_router
+from backend.app.core.config import settings
 
 # The FastAPI application. title/version/description show up in the auto-generated
 # API docs at http://localhost:8000/docs.
@@ -34,12 +43,11 @@ app = FastAPI(
     description="Multi-Agent Indian Financial Research & Annual Report Auditor",
 )
 
-# Allow the browser-based frontend to call this API. In development we accept any
-# origin; in production you would restrict allow_origins to the real frontend URL.
+# Allow only the real frontend origin(s) to call this API cross-origin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
