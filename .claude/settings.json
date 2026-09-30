@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit -m 'Revert incidental chroma.sqlite3 touch from local smoke-testing *)"
+      "Bash(git commit -m 'Revert incidental chroma.sqlite3 touch from local smoke-testing *)",
+      "Bash(gh api *)",
+      "Bash(rm -f /tmp/branch_protection.json)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp"
     ]
   }
 }

@@ -4,6 +4,23 @@ Autonomous multi-agent financial-auditing engine for the Indian capital markets 
 
 **100% zero-cost pipeline:** Google Gemini 1.5 Flash (free tier) · local `sentence-transformers/all-MiniLM-L6-v2` CPU embeddings · embedded persistent ChromaDB.
 
+## Live demo
+
+- **App:** https://dalalstreet-agent.streamlit.app/
+- **Backend API:** https://dalalstreet-agent-backend.nicemushroom-fed075ab.centralindia.azurecontainerapps.io
+
+> ⚠️ **Please test with a single run, not several in a row.** This is a
+> zero-cost deployment, and that comes with two real free-tier limits worth
+> knowing before you try it:
+> - **Gemini's free tier is capped at 20 requests/day, total, for this
+>   project.** One full research run uses several Gemini calls (planner,
+>   critic, synthesizer), so the daily quota exhausts after only a handful of
+>   runs. If you hit an error, it's very likely this — not a bug — and it
+>   resets ~24h later.
+> - **The backend scales to zero when idle** (Azure Container Apps' free
+>   tier), so the first request after a quiet period takes **60–90 seconds
+>   to cold-start** — that's expected, not a hang.
+
 ## Architecture
 
 ```
