@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m 'Revert incidental chroma.sqlite3 touch from local smoke-testing *)"
+    ]
+  }
+}
