@@ -27,8 +27,7 @@ __pycache__/
 .vscode/
 .DS_Store
 
-# Reference material and docs — not needed inside the running container.
-plan_by_gemini/
+# Docs — not needed inside the running container.
 CODE_WALKTHROUGH.md
 README.md
 

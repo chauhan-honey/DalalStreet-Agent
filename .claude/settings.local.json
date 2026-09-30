@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(docker build *)"
+      "Bash(docker build *)",
+      "Bash(git rm *)",
+      "Bash(git mv *)",
+      "Bash(sed -i '' 's/TCS_FY24\\\\.pdf/TCS_annual-report-2025-2026.pdf/g' README.md CODE_WALKTHROUGH.md scripts/ingest_pdf.py)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Clean up repo for public sharing \\(certification submission\\) *)",
+      "Bash(git push *)"
     ]
   }
 }

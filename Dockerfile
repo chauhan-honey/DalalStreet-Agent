@@ -59,8 +59,8 @@ COPY backend/ backend/
 COPY scripts/ scripts/
 
 # Bake the already-ingested vector store + source PDFs into the image itself.
-# Render's free tier wipes any writable disk on every redeploy, so the app
-# cannot depend on runtime-written state — the image has to be self-contained.
+# Azure Container Apps gives no persistent writable disk across deploys, so
+# the app cannot depend on runtime-written state — the image has to be self-contained.
 # Re-ingesting a new report means rebuilding the image (via `git push`, which
 # CI does automatically), not editing a running container.
 COPY data/chroma_db/ data/chroma_db/
@@ -84,8 +84,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\",8000)}/api/v1/health').read()" || exit 1
 
 # Exec-form CMD invoking `sh -c`: gets both worlds — ${PORT} is still expanded
-# at container start (Render assigns it dynamically per instance, so it can't
-# be hardcoded), while `sh` still runs as PID 1 and correctly forwards SIGTERM
+# at container start (the hosting platform assigns it dynamically per instance,
+# so it can't be hardcoded), while `sh` still runs as PID 1 and correctly forwards SIGTERM
 # to uvicorn for graceful shutdown, instead of swallowing it (plain shell-form
 # CMD would run via an implicit shell that does not forward signals cleanly).
 CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT}"]

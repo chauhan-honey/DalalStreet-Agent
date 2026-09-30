@@ -35,7 +35,7 @@ The Architect is consulted **before** work begins and **at review gate** for any
 
 ### Consumes
 - `.devin/tasks/dalalstreet-agent.md` — canonical project context.
-- `plan_by_gemini/*` — reference implementation and HLD (treated as *reference*, not gospel; the Architect may override).
+- The original reference implementation and HLD, kept locally outside this repo at `../DalalStreet-Agent-reference/plan_by_gemini/` (treated as *reference*, not gospel; the Architect may override).
 - Proposed designs, PRs, and dependency requests from the Tech Lead and engineers.
 
 ### Produces

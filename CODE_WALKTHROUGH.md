@@ -2,7 +2,7 @@
 
 > **How to use this document:** Open this file side-by-side with the actual code files in your editor. Read each section, then immediately open the referenced file and find the exact lines being discussed. Section 9 gives you a mind-map outline. Section 10 is a rapid-fire self-test.
 
-> **Provenance:** this document was originally generated at the end of the Copilot Chat session that scaffolded the `.claude/` AI-team framework and then built this codebase from the `plan_by_gemini/` reference implementation. It has since been refreshed against the current code and expanded with operational details (a real ingestion run, data/API-key sourcing, sandboxed-environment setup gotchas) mined from that same chat history — see §8.1–§8.3.
+> **Provenance:** this document was originally generated at the end of the Copilot Chat session that scaffolded the `.claude/` AI-team framework and then built this codebase from an earlier Gemini-authored reference implementation (kept locally outside this repo, not part of the shipped project). It has since been refreshed against the current code and expanded with operational details (a real ingestion run, data/API-key sourcing, sandboxed-environment setup gotchas) mined from that same chat history — see §8.1–§8.3.
 
 ---
 
@@ -431,7 +431,7 @@ Deliberately thin: creates the `FastAPI()` app, adds `CORSMiddleware` (so the St
 
 A one-off command you run per report:
 ```bash
-python scripts/ingest_pdf.py --file data/annual_reports/TCS_FY24.pdf --ticker TCS.NS
+python scripts/ingest_pdf.py --file data/annual_reports/TCS_annual-report-2025-2026.pdf --ticker TCS.NS
 ```
 Parses `--file`/`--ticker` with `argparse`, then calls `FinancialVectorStore().ingest_pdf(...)`. Note the `sys.path.insert(...)` line near the top — running a script directly puts *its own folder* on `sys.path`, not the repo root, so without this line the `from backend.app... import` would fail with `ModuleNotFoundError`. (This was a real bug hit and fixed during setup.)
 

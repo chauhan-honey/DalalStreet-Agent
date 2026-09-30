@@ -18,7 +18,7 @@ Context is layered. When they conflict, higher wins:
 
 1. **This file** (`/.claude/CLAUDE.md`) — team, protocol, non-negotiable invariants.
 2. **Project spec** — [`.devin/tasks/dalalstreet-agent.md`](../.devin/tasks/dalalstreet-agent.md): architecture, structure, state schema, dependencies, commands.
-3. **Reference implementation** — [`plan_by_gemini/`](../plan_by_gemini/): the Gemini-authored HLD + reference code. Treat as **reference, not gospel** — the Architect may override it.
+3. **Reference implementation** — the original Gemini-authored HLD + reference code used to bootstrap this project. Kept locally (not in this repo — it was scratch planning material, not part of the shipped project) at `../DalalStreet-Agent-reference/plan_by_gemini/` for anyone who owns that checkout. Treat as **reference, not gospel** — the Architect may override it.
 
 > If a `PROJECT_SPEC.md` or `.gemini/` directory is later added at the repo root, fold it in at layer 2 as additional canonical context.
 

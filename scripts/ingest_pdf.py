@@ -9,7 +9,7 @@ WHAT THIS FILE IS
     web server.
 
 HOW TO RUN IT
-    python scripts/ingest_pdf.py --file data/annual_reports/TCS_FY24.pdf --ticker TCS.NS
+    python scripts/ingest_pdf.py --file data/annual_reports/TCS_annual-report-2025-2026.pdf --ticker TCS.NS
 
 WHAT HAPPENS (the flow)
     THIS SCRIPT ── FinancialVectorStore.ingest_pdf(file, ticker) ──► rag/vector_store.py

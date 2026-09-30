@@ -27,7 +27,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt   # backend runtime deps + pytest, for local dev
 cp .env.example .env                  # set GOOGLE_API_KEY
 
-python scripts/ingest_pdf.py --file data/annual_reports/TCS_FY24.pdf --ticker TCS.NS
+python scripts/ingest_pdf.py --file data/annual_reports/TCS_annual-report-2025-2026.pdf --ticker TCS.NS
 uvicorn backend.app.main:app --reload --port 8000
 
 # in a second terminal (frontend only needs its own small requirements file):
