@@ -133,7 +133,8 @@ jobs:
               --image "$IMAGE" \
               --set-env-vars \
                 GOOGLE_API_KEY=secretref:google-api-key \
-                BACKEND_API_KEY=secretref:backend-api-key
+                BACKEND_API_KEY=secretref:backend-api-key \
+                ENVIRONMENT=production
           else
             echo "First deploy — creating the app."
             az containerapp create \
@@ -150,5 +151,6 @@ jobs:
                 backend-api-key="${{ secrets.BACKEND_API_KEY }}" \
               --env-vars \
                 GOOGLE_API_KEY=secretref:google-api-key \
-                BACKEND_API_KEY=secretref:backend-api-key
+                BACKEND_API_KEY=secretref:backend-api-key \
+                ENVIRONMENT=production
           fi

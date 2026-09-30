@@ -10,3 +10,4 @@ sentence-transformers>=2.5.0
 pymupdf>=1.23.0
 yfinance>=0.2.36
 python-dotenv>=1.0.1
+slowapi>=0.1.9

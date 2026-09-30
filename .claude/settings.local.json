@@ -8,7 +8,10 @@
       "Bash(sed -i '' 's/TCS_FY24\\\\.pdf/TCS_annual-report-2025-2026.pdf/g' README.md CODE_WALKTHROUGH.md scripts/ingest_pdf.py)",
       "Bash(git add *)",
       "Bash(git commit -m 'Clean up repo for public sharing \\(certification submission\\) *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(git checkout *)"
     ]
   }
 }

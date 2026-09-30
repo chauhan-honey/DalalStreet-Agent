@@ -30,14 +30,18 @@ WHERE THIS SITS IN THE PROJECT (the flow)
 """
 import asyncio
 import json
+import logging
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import settings
+from backend.app.core.rate_limit import limiter
 from backend.app.graph import compiled_graph  # the compiled LangGraph workflow
+
+logger = logging.getLogger(__name__)
 
 # A router collects the endpoints defined below; main.py mounts it on the app.
 router = APIRouter()
@@ -87,13 +91,20 @@ async def health() -> dict:
 
 
 @router.post("/research/stream", dependencies=[Depends(require_api_key)])
-async def stream_financial_audit(req: ResearchRequest):
+@limiter.limit("10/hour")
+async def stream_financial_audit(request: Request, req: ResearchRequest):
     """Run the full agent workflow and stream each node's output as it completes.
 
     Returns a StreamingResponse (SSE). The inner `event_generator` is an async
     generator: every time it `yield`s a string, FastAPI flushes that chunk to the
     browser immediately — so the user sees progress in real time instead of
     waiting for the whole run to finish.
+
+    Rate-limited (10/hour per caller IP, see core/rate_limit.py) as a second
+    layer behind the API key — insurance against quota abuse if the key ever
+    leaks, since a shared secret alone doesn't stop scripted repeated calls.
+    `request: Request` is required by slowapi's @limiter.limit decorator, not
+    used directly in the body below.
     """
     async def event_generator():
         # Build the STARTING shared state for the graph. The reducer-backed keys
@@ -121,10 +132,14 @@ async def stream_financial_audit(req: ResearchRequest):
                     # Briefly yield control so the chunk is flushed to the client.
                     # asyncio.sleep (not time.sleep) keeps the event loop free.
                     await asyncio.sleep(0.05)
-        except Exception as exc:
-            # If any node errors, send ONE clean error frame instead of leaking a
-            # raw stack trace (which could expose internals) into the stream.
-            err = {"node": "error", "data": {"message": str(exc)}}
+        except Exception:
+            # If any node errors, log the full exception server-side (where only
+            # we can see it) but send the browser a generic message — str(exc)
+            # can occasionally include internal detail (paths, hostnames, library
+            # internals) that has no business reaching a client, even one that's
+            # already past the API-key check.
+            logger.exception("research/stream failed for ticker=%s", req.ticker)
+            err = {"node": "error", "data": {"message": "An internal error occurred. Please try again."}}
             yield f"data: {json.dumps(err)}\n\n"
 
     # Tell the browser this is an event stream. The headers disable caching and

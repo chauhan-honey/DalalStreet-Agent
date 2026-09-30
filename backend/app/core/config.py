@@ -88,6 +88,13 @@ class Settings:
         if origin.strip()
     ]
 
+    # "development" (default, e.g. local `uvicorn --reload`) or "production"
+    # (set explicitly in the deployed container — see ci-cd.yml). Only used
+    # right now to decide whether to expose the auto-generated API docs
+    # (/docs, /redoc, /openapi.json) — public docs on a deployed API are a
+    # minor info-disclosure surface not worth carrying once it's live.
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+
 
 # Build the ONE shared settings instance. Importing modules use this object.
 settings = Settings()
