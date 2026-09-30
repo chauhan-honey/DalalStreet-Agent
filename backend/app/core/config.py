@@ -93,7 +93,12 @@ class Settings:
     # right now to decide whether to expose the auto-generated API docs
     # (/docs, /redoc, /openapi.json) — public docs on a deployed API are a
     # minor info-disclosure surface not worth carrying once it's live.
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    # Read from APP_ENV, not ENVIRONMENT: az containerapp update silently
+    # dropped a plain (non-secretref) value set under the name "ENVIRONMENT"
+    # — observed empirically (the var showed up in the revision spec with no
+    # value at all), not documented anywhere; renaming sidesteps whatever
+    # reserved-name collision or extension quirk caused it.
+    ENVIRONMENT: str = os.getenv("APP_ENV", "development")
 
 
 # Build the ONE shared settings instance. Importing modules use this object.
