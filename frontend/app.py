@@ -27,6 +27,28 @@ HOW IT TALKS TO THE BACKEND (the flow)
     The backend requires that key as an X-API-Key header on /research/stream
     — deployed on the public internet with no other access control, without
     it anyone with the URL could trigger real Gemini API calls on our quota.
+
+WHY st.session_state / st.rerun() SHOW UP BELOW
+    Two UX requirements need them:
+      1. Don't show the "Workflow Execution" status box at all until a run has
+         actually started (a fresh page load should look idle, not like
+         something is already in progress).
+      2. Disable the "Start Multi-Agent Audit" button for the whole duration of
+         a run, so a user can't click it again mid-stream — this isn't just
+         cosmetic: Streamlit aborts the current script execution and starts a
+         fresh one on any new interaction, so a second click mid-stream would
+         open a genuine second concurrent call to the backend (exactly the
+         kind of overlap that once wedged the server and double-spent Gemini
+         quota — see backend/app/core/rate_limit.py).
+    A single Streamlit script pass can't retroactively change a widget's
+    `disabled=` after that widget has already been drawn earlier in the same
+    pass, so "disable it, do the work, re-enable it" needs THREE passes:
+      pass 1 (click)   -> flip is_running True,  st.rerun()
+      pass 2 (running) -> button renders disabled; do the actual request/stream
+      pass 3 (cleanup) -> flip is_running False, st.rerun(), button re-enables
+    Pass 3 redraws the page from scratch, so whatever pass 2 produced (the
+    report, tables, status) would vanish unless we stash it in session_state
+    and replay it — that's what `last_run` below is for.
 """
 import json
 import os
@@ -62,6 +84,15 @@ BACKEND_URL = _get_config("BACKEND_URL", "http://localhost:8000")
 BACKEND_API_KEY = _get_config("BACKEND_API_KEY", "")
 STREAM_ENDPOINT = f"{BACKEND_URL}/api/v1/research/stream"
 
+# `is_running`: True only while a request is actively in flight (see the big
+# docstring note above on why this needs session_state + st.rerun() at all).
+# `last_run`: the most recent completed run's results, so they survive the
+# cleanup rerun that re-enables the button instead of vanishing.
+if "is_running" not in st.session_state:
+    st.session_state.is_running = False
+if "last_run" not in st.session_state:
+    st.session_state.last_run = None
+
 # Page header.
 st.title("📈 DalalStreet-Agent: Indian Financial Multi-Agent Auditor")
 st.markdown(
@@ -94,16 +125,34 @@ with col_left:
             "cross-examine with operating margins and cash flows."
         ),
     )
-    # The button that kicks off a run. `run_button` is True only on the rerun
-    # triggered by the click.
+    # Disabled for the entire duration of a run (see module docstring) so a
+    # second click can't open a concurrent request to the backend.
     run_button = st.button(
-        "Start Multi-Agent Audit", type="primary", use_container_width=True
+        "Start Multi-Agent Audit",
+        type="primary",
+        use_container_width=True,
+        disabled=st.session_state.is_running,
     )
 
 with col_right:
-    # Live status area + empty placeholders we fill in as frames arrive. Creating
-    # the placeholders up front lets us update them in place during the stream.
-    status_box = st.status("Workflow Execution", expanded=True)
+    # Only create the status box if there's something to show it for — a
+    # fresh page load has neither an active run nor a past result, so no box
+    # at all (this is the fix for the "spinner shown before anything runs"
+    # complaint: previously this was created unconditionally, defaulting to
+    # a running-looking spinner state regardless of whether anything had
+    # actually started).
+    _have_something_to_show = st.session_state.is_running or st.session_state.last_run is not None
+    status_box = None
+    if _have_something_to_show:
+        if st.session_state.is_running:
+            label, state, expanded = "Workflow Execution", "running", True
+        else:
+            lr = st.session_state.last_run
+            label = lr.get("label", "Workflow Execution")
+            state = lr.get("state", "complete")
+            expanded = state == "error"
+        status_box = st.status(label, state=state, expanded=expanded)
+
     market_placeholder = st.empty()     # will hold the fundamentals table
     findings_placeholder = st.empty()   # will hold the critic's findings table
     report_placeholder = st.empty()     # will hold the final markdown report
@@ -157,13 +206,41 @@ def _render_findings(data: dict) -> None:
         findings_placeholder.dataframe(findings, use_container_width=True)
 
 
-# Everything below runs only when the user clicks the button.
-if run_button:
+# Replay the last completed run's content on a pass where nothing is actively
+# running — otherwise it would vanish the moment the cleanup rerun (below)
+# flips is_running back to False to re-enable the button.
+if not st.session_state.is_running and st.session_state.last_run:
+    _lr = st.session_state.last_run
+    if _lr.get("market_data"):
+        _render_market(_lr["market_data"])
+    if _lr.get("findings_data"):
+        _render_findings(_lr["findings_data"])
+    if _lr.get("report"):
+        report_placeholder.markdown(_lr["report"])
+    if _lr.get("error"):
+        st.error(_lr["error"])
+
+# Pass 1: a fresh click. Flip the flag and rerun immediately so the button
+# redraws disabled on the very next pass, before any real work starts.
+if run_button and not st.session_state.is_running:
+    st.session_state.is_running = True
+    st.session_state.last_run = None
+    st.rerun()
+
+# Pass 2: the actual request + streaming, run while the button is disabled.
+if st.session_state.is_running:
     status_box.write("⚙️ Initializing StateGraph...")
     # The JSON body the backend's ResearchRequest model expects.
     payload = {"company_name": company_choice, "ticker": ticker, "user_query": query}
-
     headers = {"X-API-Key": BACKEND_API_KEY} if BACKEND_API_KEY else {}
+
+    # Collected here instead of acted on immediately, so pass 3 can stash it
+    # in session_state for replay after the button re-enables.
+    result = {
+        "label": "Audit Complete", "state": "complete",
+        "market_data": None, "findings_data": None, "report": None, "error": None,
+    }
+
     try:
         # stream=True keeps the HTTP connection open so we can read SSE frames as
         # they arrive rather than waiting for the whole response.
@@ -171,60 +248,91 @@ if run_button:
             if resp.status_code == 401:
                 # Distinguish "wrong/missing key" from a generic connection
                 # failure so a misconfigured secret is obvious, not a mystery.
-                status_box.update(label="Authentication Error", state="error")
-                st.error(
+                result["label"], result["state"] = "Authentication Error", "error"
+                result["error"] = (
                     "Backend rejected the request (401 Unauthorized) — BACKEND_API_KEY "
                     "in this app's secrets doesn't match the backend's configured key."
                 )
-                st.stop()
-            # Raise if the backend returned any other HTTP error status (4xx/5xx).
-            resp.raise_for_status()
-            # Iterate the response line by line as the server pushes frames.
-            for line in resp.iter_lines():
-                if not line:
-                    continue  # SSE frames are separated by blank lines; skip them
-                decoded = line.decode("utf-8")
-                # We only care about the "data: ..." payload lines.
-                if not decoded.startswith("data: "):
-                    continue
-                try:
-                    # Strip the "data: " prefix and parse the JSON payload.
-                    event = json.loads(decoded[len("data: "):])
-                except json.JSONDecodeError:
-                    continue  # ignore any malformed frame instead of crashing
+                status_box.update(label=result["label"], state=result["state"])
+                st.error(result["error"])
+            else:
+                # Raise if the backend returned any other HTTP error status (4xx/5xx).
+                resp.raise_for_status()
+                # Iterate the response line by line as the server pushes frames.
+                for line in resp.iter_lines():
+                    if not line:
+                        continue  # SSE frames are separated by blank lines; skip them
+                    decoded = line.decode("utf-8")
+                    # We only care about the "data: ..." payload lines.
+                    if not decoded.startswith("data: "):
+                        continue
+                    try:
+                        # Strip the "data: " prefix and parse the JSON payload.
+                        event = json.loads(decoded[len("data: "):])
+                    except json.JSONDecodeError:
+                        continue  # ignore any malformed frame instead of crashing
 
-                node = event.get("node")   # which graph node produced this frame
-                data = event.get("data", {})
+                    node = event.get("node")   # which graph node produced this frame
+                    data = event.get("data", {})
 
-                # Update the UI based on which node just finished. This mirrors the
-                # execution order of graph.py so the user follows along step by step.
-                if node == "planner":
-                    status_box.write("📋 **Planner:** Decomposition & sub-queries generated.")
-                elif node == "rag_worker":
-                    status_box.write("📄 **RAG Worker:** Extracted PDF disclosures with page citations.")
-                elif node == "market_worker":
-                    status_box.write("📈 **Market Worker (MCP):** Retrieved live NSE/BSE fundamentals.")
-                    _render_market(data)
-                elif node == "critic":
-                    verdict = data.get("critic_verdict")
-                    status_box.write(f"🔍 **Critic Node:** Evaluation complete. Verdict: `{verdict}`")
-                    _render_findings(data)
-                elif node == "synthesizer":
-                    # Final node: mark the workflow complete and show the report.
-                    status_box.update(label="Audit Complete", state="complete", expanded=False)
-                    report_placeholder.markdown(data.get("final_report", "_No report produced._"))
-                    # Terminal node: stop reading immediately instead of blocking on
-                    # iter_lines() until the server closes the connection. Without
-                    # this, Streamlit would not repaint the report until the stream
-                    # times out (the run appears stuck on a spinner).
-                    break
-                elif node == "error":
-                    # The backend sent a sanitised error frame (a node failed).
-                    status_box.update(label="Execution Error", state="error")
-                    st.error(f"Backend error: {data.get('message', 'unknown error')}")
-                    break
+                    # Update the UI based on which node just finished. This mirrors the
+                    # execution order of graph.py so the user follows along step by step.
+                    if node == "planner":
+                        status_box.write("📋 **Planner:** Decomposition & sub-queries generated.")
+                    elif node == "rag_worker":
+                        status_box.write("📄 **RAG Worker:** Extracted PDF disclosures with page citations.")
+                    elif node == "market_worker":
+                        status_box.write("📈 **Market Worker (MCP):** Retrieved live NSE/BSE fundamentals.")
+                        result["market_data"] = data
+                        _render_market(data)
+                    elif node == "critic":
+                        verdict = data.get("critic_verdict")
+                        status_box.write(f"🔍 **Critic Node:** Evaluation complete. Verdict: `{verdict}`")
+                        result["findings_data"] = data
+                        _render_findings(data)
+                    elif node == "synthesizer":
+                        # Final node: mark the workflow complete and show the report.
+                        result["report"] = data.get("final_report", "_No report produced._")
+                        status_box.update(label="Audit Complete", state="complete", expanded=False)
+                        report_placeholder.markdown(result["report"])
+                        # Terminal node: stop reading immediately instead of blocking on
+                        # iter_lines() until the server closes the connection. Without
+                        # this, the UI would not repaint the report until the stream
+                        # times out (the run appears stuck on a spinner).
+                        break
+                    elif node == "error":
+                        # The backend sent a sanitised error frame (a node failed).
+                        result["label"], result["state"] = "Execution Error", "error"
+                        result["error"] = f"Backend error: {data.get('message', 'unknown error')}"
+                        status_box.update(label=result["label"], state=result["state"])
+                        st.error(result["error"])
+                        break
     except requests.exceptions.RequestException as exc:
         # The backend was unreachable or timed out. Show a friendly message rather
-        # than letting the Streamlit app crash with a traceback.
-        status_box.update(label="Connection Error", state="error")
-        st.error(f"Could not reach backend at {STREAM_ENDPOINT}: {exc}")
+        # than letting the app crash with a traceback.
+        result["label"], result["state"] = "Connection Error", "error"
+        result["error"] = f"Could not reach backend at {STREAM_ENDPOINT}: {exc}"
+        status_box.update(label=result["label"], state=result["state"])
+        st.error(result["error"])
+    except Exception as exc:
+        # Catch-all safety net: this one matters more than it looks. Without
+        # it, any exception OTHER than a requests one (caught above) would
+        # skip the cleanup in `finally` below entirely... except it wouldn't,
+        # because `finally` always runs regardless of which exception (if
+        # any) occurred — that's the whole point of using one here instead of
+        # only an `except`. But showing *some* message beats a bare traceback.
+        result["label"], result["state"] = "Unexpected Error", "error"
+        result["error"] = f"Unexpected frontend error: {exc}"
+        status_box.update(label=result["label"], state=result["state"])
+        st.error(result["error"])
+    finally:
+        # Pass 3: stash the outcome for replay, flip the flag, rerun so the
+        # button redraws enabled again. In `finally` specifically (not just
+        # after the try/except) so this ALWAYS happens no matter what went
+        # wrong above — verified by testing: an exception type neither except
+        # clause caught (a plain ConnectionError, not requests') used to skip
+        # this entirely and leave the button permanently disabled for the
+        # rest of the session.
+        st.session_state.last_run = result
+        st.session_state.is_running = False
+        st.rerun()
