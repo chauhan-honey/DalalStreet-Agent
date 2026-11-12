@@ -2,7 +2,7 @@
 
 > **How to use this document:** Open this file side-by-side with the actual code files in your editor. Read each section, then immediately open the referenced file and find the exact lines being discussed. Section 9 gives you a mind-map outline. Section 10 is a rapid-fire self-test.
 
-> **Provenance:** this document was originally generated at the end of the Copilot Chat session that scaffolded the `.claude/` AI-team framework and then built this codebase from an earlier Gemini-authored reference implementation (kept locally outside this repo, not part of the shipped project). It has since been refreshed against the current code and expanded with operational details (a real ingestion run, data/API-key sourcing, sandboxed-environment setup gotchas) mined from that same chat history — see §8.1–§8.3.
+> **Provenance:** this document was originally generated at the end of the Copilot Chat session that scaffolded the `.claude/` AI-team framework and then built this codebase from an earlier Gemini-authored reference implementation (kept locally outside this repo, not part of the shipped project). How that AI-assisted process worked, and which decisions were mine, is summarised in the README's [How this was built](README.md#how-this-was-built) section. It has since been refreshed against the current code and expanded with operational details (a real ingestion run, data/API-key sourcing, sandboxed-environment setup gotchas) mined from that same chat history — see §8.1–§8.3.
 
 ---
 
@@ -68,6 +68,7 @@ DalalStreet-Agent/
 │       ├── main.py                    ← FastAPI app bootstrap (CORS, router mount)
 │       ├── core/
 │       │   ├── config.py              ← settings.* — the ONE place secrets/config live
+│       │   ├── rate_limit.py          ← slowapi limiter shared by main.py and endpoints.py
 │       │   └── state.py               ← AgentState — the shared dict every node reads/writes
 │       ├── api/v1/
 │       │   └── endpoints.py           ← POST /research/stream (SSE), GET /health
@@ -79,13 +80,21 @@ DalalStreet-Agent/
 ├── frontend/
 │   └── app.py                         ← Streamlit UI
 ├── scripts/
-│   └── ingest_pdf.py                  ← CLI: load one PDF into ChromaDB (run once per report)
+│   ├── ingest_pdf.py                  ← CLI: load one PDF into ChromaDB (run once per report)
+│   ├── eval_retrieval.py              ← retrieval-quality eval (Hit@k, MRR) — no Gemini calls
+│   └── eval_critic.py                 ← critic-accuracy eval on seeded claims (1 Gemini call/case)
 ├── data/
 │   ├── annual_reports/                ← source PDFs live here
 │   └── chroma_db/                     ← ChromaDB's on-disk database (auto-created)
-└── tests/
-    ├── test_state_reducers.py         ← proves the reducer contract in state.py
-    └── test_mcp_resilience.py         ← proves _safe_info() never raises
+├── tests/
+│   ├── test_graph.py                  ← topology + full graph runs with fake LLM/MCP/vector store
+│   ├── test_sse_endpoint.py           ← SSE frame format, error frames, validation, auth
+│   ├── test_vector_store.py           ← ingestion, ticker isolation, malformed PDFs
+│   ├── test_frontend.py               ← Streamlit AppTest + _coerce_to_dict
+│   ├── test_state_reducers.py         ← proves the reducer contract in state.py
+│   ├── test_mcp_resilience.py         ← proves _safe_info() never raises
+│   └── test_auth.py                   ← API-key dependency
+└── .github/workflows/ci-cd.yml        ← test → build image → deploy to Azure Container Apps
 ```
 
 **Reading order that mirrors how the system actually assembles itself** (this is also the order used in Section 6 below):
@@ -326,7 +335,7 @@ def _parse_llm_json(raw: str) -> Dict[str, Any]:
 - `temperature=0.1` → low randomness, because most prompts demand strict, repeatable JSON.
 - `_parse_llm_json` is a defensive helper used by every node that expects JSON back from the model: strips markdown fences models sometimes add, and **fails soft** to `{}` rather than crashing the node on malformed output.
 
-**Node 1 — `planner_node`:** one Gemini call; asks for 2 RAG search queries + needed metrics as JSON; writes `plan` (as raw text, parsed later) and seeds `iteration_count`.
+**Node 1 — `planner_node`:** one Gemini call; asks for 2 RAG search queries + needed metrics as JSON; writes `plan` (as raw text, parsed later) and seeds `iteration_count`. If the reply contains no usable `rag_queries` (prose, wrong shape, empty list), it raises `UnusableLLMResponse` instead of letting the run continue with zero evidence; `endpoints.py` sends that exception's user-facing message as an `error` SSE frame, so the user sees *why* the run stopped rather than a confident-looking but evidence-free report.
 
 **Node 2 — `rag_worker_node`:** parses the plan's `rag_queries`, calls `vector_store.query(...)` for each **via `asyncio.to_thread`** (ChromaDB's call is blocking/synchronous, so it's pushed to a worker thread so it doesn't freeze the async event loop that's simultaneously running `market_worker_node`). Writes `rag_context`.
 
@@ -419,7 +428,7 @@ Deliberately thin: creates the `FastAPI()` app, adds `CORSMiddleware` (so the St
 
 ### 6.8 `frontend/app.py` — Streamlit UI
 
-- Renders company selector, query textbox, and a "Start Multi-Agent Audit" button.
+- Renders company selector (the three ingested companies, or any NSE/BSE ticker typed in — validated with the same pattern the backend enforces), query textbox, a free-tier quota notice, and a "Start Multi-Agent Audit" button.
 - On click: POSTs to the backend with `stream=True`, then does `for line in resp.iter_lines():` to read SSE frames one at a time, updating a `st.status(...)` widget and two `st.dataframe(...)` placeholders as `market_worker`/`critic` frames arrive.
 - `_coerce_to_dict(value)` — a real bug fix: the MCP tool result can come back as a **list of content parts** (e.g. `[{"type": "text", "text": "{...json...}"}]`) rather than a plain dict, depending on the MCP adapter version. This helper normalizes dict / JSON-string / list-of-parts into one flat dict so the market table renders correctly.
 - On the `synthesizer` frame: renders `final_report` as markdown, then **`break`s** out of the read loop.

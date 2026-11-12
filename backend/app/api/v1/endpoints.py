@@ -39,7 +39,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.config import settings
 from backend.app.core.rate_limit import limiter
-from backend.app.graph import compiled_graph  # the compiled LangGraph workflow
+from backend.app.graph import UnusableLLMResponse, compiled_graph  # the compiled LangGraph workflow
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,10 @@ async def stream_financial_audit(request: Request, req: ResearchRequest):
                     # Briefly yield control so the chunk is flushed to the client.
                     # asyncio.sleep (not time.sleep) keeps the event loop free.
                     await asyncio.sleep(0.05)
+        except UnusableLLMResponse as exc:
+            logger.warning("research/stream stopped for ticker=%s: %s", req.ticker, exc)
+            err = {"node": "error", "data": {"message": str(exc)}}
+            yield f"data: {json.dumps(err)}\n\n"
         except Exception:
             # If any node errors, log the full exception server-side (where only
             # we can see it) but send the browser a generic message — str(exc)
