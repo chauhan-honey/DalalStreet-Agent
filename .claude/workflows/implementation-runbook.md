@@ -7,7 +7,7 @@
 ## 0. Prerequisites
 
 - Python **3.10+** (`python --version`).
-- A free **Google AI Studio** API key (Gemini 1.5 Flash free tier).
+- A free **Google AI Studio** API key (Gemini 3.6 Flash free tier).
 - macOS/Linux shell. First run downloads the local MiniLM model (~90 MB) once.
 
 ---

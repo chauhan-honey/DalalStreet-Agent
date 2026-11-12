@@ -7,11 +7,11 @@
 - **Orchestration**: LangGraph state machine with explicit branching, parallel data retrieval, cycle-based self-healing
 - **Tooling**: Model Context Protocol (MCP) for real-time equity data via FastMCP
 - **Verification**: Critic/Auditor loop evaluating qualitative statements vs quantitative metrics
-- **Cost**: 100% zero cost - Google Gemini 1.5 Flash (Free Tier), local sentence-transformers CPU embeddings, embedded ChromaDB
+- **Cost**: 100% zero cost - Google Gemini 3.6 Flash (Free Tier), local sentence-transformers CPU embeddings, embedded ChromaDB
 
 ## Tech Stack
 - **Backend**: FastAPI, Python
-- **LLM**: Google Gemini 1.5 Flash (Free Tier via Google AI Studio)
+- **LLM**: Google Gemini 3.6 Flash (Free Tier via Google AI Studio)
 - **Orchestration**: LangGraph, LangChain
 - **Vector DB**: ChromaDB with sentence-transformers (all-MiniLM-L6-v2)
 - **Market Data**: yfinance via FastMCP server
@@ -55,7 +55,7 @@ dalalstreet-agent/
 
 ## LangGraph Workflow (5 Nodes)
 1. **Planner Node**: Formulates PDF RAG search queries, identifies quantitative metrics
-2. **RAG Worker Node**: ChromaDB Top-K semantic chunks retrieval
+2. **RAG Worker Node**: ChromaDB Top-K semantic retrieval over 1000-character chunks (200-character overlap)
 3. **Market Worker Node**: FastMCP server with yfinance (NSE/BSE data)
 4. **Critic/Auditor Node**: Cross-examines qualitative disclosures vs live fundamentals, flags contradictions, implements retry loop (max 2 iterations)
 5. **Synthesizer Node**: Compiles structured dossier with verified citations
