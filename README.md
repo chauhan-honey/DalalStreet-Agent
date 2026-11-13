@@ -137,7 +137,20 @@ pytest -q
 
 ### Critic accuracy — [scripts/eval_critic.py](scripts/eval_critic.py)
 
-Six seeded cases with known answers: management claims that are accurate, overstated, or not checkable against the available metrics, paired with fixed fundamentals. Only the critic node runs, at one Gemini call per case. *Results pending.*
+Six seeded cases with known answers: management claims that are accurate, overstated, or not checkable against the available metrics, paired with fixed fundamentals. Only the critic node runs, at one Gemini call per case.
+
+| Case | Expected | Critic said |
+| --- | --- | --- |
+| Operating margin overstated (26.5% claimed vs 23.96%) | contradiction | contradiction |
+| Operating margin accurate (24.0% vs 23.96%) | aligned | aligned |
+| Revenue growth overstated (12% claimed vs 4.7%) | contradiction | contradiction |
+| Revenue growth accurate (4.7%) | aligned | aligned |
+| Leverage misstated ("debt exceeds equity" vs D/E 9.8%) | contradiction | contradiction |
+| Claim with no matching metric (employee engagement) | unsupported | unsupported |
+
+**Result: 6/6** with `gemini-3.6-flash`.
+
+**What this shows:** given the right evidence, the critic reliably separates accurate, overstated and uncheckable claims, including near-misses like 24.0% vs 23.96% that it correctly treats as aligned. Six cases are a smoke test, not a benchmark. Retrieval is the weaker stage, which is why the end-to-end quality bottleneck sits there, not in the critic.
 
 ### End-to-end example
 
