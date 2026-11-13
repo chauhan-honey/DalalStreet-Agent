@@ -52,6 +52,7 @@ WHY st.session_state / st.rerun() SHOW UP BELOW
 """
 import json
 import os
+import re
 
 import requests   # HTTP client used to call the backend and read the SSE stream
 import streamlit as st
@@ -99,6 +100,26 @@ st.markdown(
     "Autonomous research system cross-examining Annual Report disclosures "
     "against live NSE/BSE fundamentals."
 )
+st.info(
+    "**Free-tier demo — please run one audit at a time.** Gemini's free tier "
+    "allows about 20 calls per day for this whole project and one audit uses "
+    "several, so repeated runs can exhaust it (it resets after ~24h). The "
+    "backend also sleeps when idle, so the first run may take 60–90 seconds "
+    "to start.",
+    icon="⏳",
+)
+
+# Annual reports that were ingested into the vector store shipped with the
+# backend image. Any other ticker still gets live market data, but has no
+# report text to audit against.
+INGESTED_COMPANIES = {
+    "Tata Consultancy Services": "TCS.NS",
+    "Reliance Industries": "RELIANCE.NS",
+    "Infosys": "INFY.NS",
+}
+CUSTOM_OPTION = "Other — enter an NSE/BSE ticker"
+# Same rule the backend's ResearchRequest enforces, checked here to fail fast.
+TICKER_PATTERN = re.compile(r"^[A-Za-z0-9.\-]+$")
 
 # Split the page into a narrow input column (left) and a wide output column (right).
 col_left, col_right = st.columns([1, 2])
@@ -108,14 +129,26 @@ with col_left:
     # because the backend/tools need the ticker (e.g. "TCS.NS").
     company_choice = st.selectbox(
         "Select Target Company",
-        ["Tata Consultancy Services", "Reliance Industries", "Infosys"],
+        [*INGESTED_COMPANIES, CUSTOM_OPTION],
     )
-    ticker_map = {
-        "Tata Consultancy Services": "TCS.NS",
-        "Reliance Industries": "RELIANCE.NS",
-        "Infosys": "INFY.NS",
-    }
-    ticker = ticker_map[company_choice]
+    if company_choice == CUSTOM_OPTION:
+        company_name = st.text_input("Company name", placeholder="e.g. HDFC Bank").strip()
+        ticker = st.text_input(
+            "Ticker (yfinance format)", placeholder="e.g. HDFCBANK.NS or 500180.BO"
+        ).strip().upper()
+        st.caption(
+            "Live market data works for any listed ticker. Annual-report "
+            "evidence is only available for the three pre-ingested companies, "
+            "so for other tickers the auditor will mark management claims as "
+            "unsupported. Adding a report means running scripts/ingest_pdf.py "
+            "and redeploying the backend image (see README)."
+        )
+    else:
+        company_name = company_choice
+        ticker = INGESTED_COMPANIES[company_choice]
+    inputs_valid = bool(company_name) and bool(TICKER_PATTERN.match(ticker))
+    if company_choice == CUSTOM_OPTION and ticker and not TICKER_PATTERN.match(ticker):
+        st.error("Tickers may only contain letters, digits, '.' and '-'.")
 
     # Free-text box for the research directive, pre-filled with an example.
     query = st.text_area(
@@ -131,7 +164,7 @@ with col_left:
         "Start Multi-Agent Audit",
         type="primary",
         use_container_width=True,
-        disabled=st.session_state.is_running,
+        disabled=st.session_state.is_running or not inputs_valid,
     )
 
 with col_right:
@@ -231,7 +264,7 @@ if run_button and not st.session_state.is_running:
 if st.session_state.is_running:
     status_box.write("⚙️ Initializing StateGraph...")
     # The JSON body the backend's ResearchRequest model expects.
-    payload = {"company_name": company_choice, "ticker": ticker, "user_query": query}
+    payload = {"company_name": company_name, "ticker": ticker, "user_query": query}
     headers = {"X-API-Key": BACKEND_API_KEY} if BACKEND_API_KEY else {}
 
     # Collected here instead of acted on immediately, so pass 3 can stash it

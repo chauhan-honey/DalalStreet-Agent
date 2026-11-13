@@ -79,6 +79,14 @@ llm = ChatGoogleGenerativeAI(
 vector_store = FinancialVectorStore()
 
 
+class UnusableLLMResponse(Exception):
+    """Gemini replied, but with nothing the workflow can use.
+
+    Its message is written for the end user — endpoints.py streams it to the
+    browser verbatim, unlike unexpected errors, which stay generic.
+    """
+
+
 def _parse_llm_json(raw: str) -> Dict[str, Any]:
     """Safely turn an LLM's text answer into a Python dict.
 
@@ -120,6 +128,15 @@ async def planner_node(state: AgentState) -> dict:
     res = await llm.ainvoke([HumanMessage(content=prompt)])
     # Use res.text (the plain string form). Newer Gemini models return res.content
     # as a list of parts, so res.text is the safe way to get the text either way.
+    # Without search queries the rest of the run would audit an empty context and
+    # produce a confident-looking but evidence-free report, so stop here instead.
+    queries = _parse_llm_json(res.text).get("rag_queries")
+    if not isinstance(queries, list) or not queries:
+        raise UnusableLLMResponse(
+            "The planner (Gemini) did not return a usable search plan for this "
+            "query, so the audit was stopped before producing an evidence-free "
+            "report. Try rephrasing the directive, or run it again in a minute."
+        )
     # Save the raw JSON text (rag_worker parses it later) and start the loop
     # counter at 0 so the critic's retry logic has a value to increment.
     return {"plan": [res.text], "iteration_count": state.get("iteration_count", 0)}
@@ -226,6 +243,7 @@ async def critic_node(state: AgentState) -> dict:
     Return a JSON object with keys:
       - "verdict": "PASS" or "NEEDS_RETRY"
       - "findings": array of objects with keys claim, evidence, metric, status
+        (status is exactly one of "aligned", "contradiction", "unsupported")
       - "feedback": actionable retrieval instruction if NEEDS_RETRY, else null
     Respond ONLY in valid JSON. No prose, no markdown fences.
     """

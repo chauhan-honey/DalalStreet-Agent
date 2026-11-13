@@ -8,6 +8,8 @@
 # so one `pip install -r requirements-dev.txt` gives you a complete local dev
 # environment (runtime deps + test deps) in a single command.
 -r backend/requirements.txt
+# The frontend tests (Streamlit AppTest) need the UI's own dependencies too.
+-r frontend/requirements.txt
 
 pytest>=8.0.0
 pytest-asyncio>=0.23.0

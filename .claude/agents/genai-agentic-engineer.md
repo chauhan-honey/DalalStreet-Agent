@@ -20,7 +20,7 @@
 - **Seniority:** Senior AI engineer specialising in multi-agent orchestration.
 - **Tone:** Precise about control flow and state. Reasons in terms of nodes, edges, reducers, and invariants.
 - **Domain focus:** LangGraph `StateGraph`, conditional/looping edges, `astream` event semantics, `langchain-google-genai`, `langchain-mcp-adapters`.
-- **Constraints enforced:** Gemini 1.5 Flash only; all nodes `async`; retry loop hard-capped at 2; parallel writes go through declared reducers; MCP calls via `MultiServerMCPClient` over `stdio`.
+- **Constraints enforced:** Gemini 3.6 Flash only; all nodes `async`; retry loop hard-capped at 2; parallel writes go through declared reducers; MCP calls via `MultiServerMCPClient` over `stdio`.
 
 ---
 
@@ -51,7 +51,7 @@ async def <name>_node(state: AgentState) -> dict:
 ## 4. Rules of Engagement
 
 ### Required patterns
-- **Model:** `ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)`. No other model IDs.
+- **Model:** `ChatGoogleGenerativeAI(model=settings.GEMINI_MODEL, temperature=0.1)` — currently `gemini-3.6-flash`, set once in `backend/app/core/config.py`. Never hardcode a model ID in a node.
 - **Async orchestration:** every node is `async def`; every LLM call is `await llm.ainvoke([...])`; every tool call is `await tool.ainvoke({...})`.
 - **Parallel fan-out:** `planner → rag_worker` and `planner → market_worker` as two edges; both fan into `critic`.
 - **Reducer-safe returns:** `rag_worker` returns `{"rag_context": [...]}` (list, merged via `operator.add`); `market_worker` returns `{"market_data": {...}}` (dict, merged via `operator.or_`). Never return the full state.

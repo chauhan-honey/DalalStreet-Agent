@@ -8,7 +8,7 @@
 
 **DalalStreet-Agent** is an autonomous, multi-agent financial-auditing engine for the Indian capital markets (NSE & BSE). It ingests corporate Annual Reports (PDFs), retrieves real-time equity fundamentals over the Model Context Protocol, orchestrates specialized sub-agents with a LangGraph state machine, and runs a self-correcting **Critic/Auditor** loop to flag contradictions between qualitative management claims and quantitative reality.
 
-**The pipeline is 100% zero-cost:** Google Gemini 1.5 Flash (free tier) · local `sentence-transformers/all-MiniLM-L6-v2` CPU embeddings · embedded persistent ChromaDB.
+**The pipeline is 100% zero-cost:** Google Gemini 3.6 Flash (free tier) · local `sentence-transformers/all-MiniLM-L6-v2` CPU embeddings · embedded persistent ChromaDB.
 
 ---
 
@@ -68,7 +68,7 @@ Production handbooks with rules, patterns, anti-patterns, and copy-ready code. C
 
 Enforced by the Architect; violating any is a rejectable defect.
 
-1. **Zero cost.** Gemini 1.5 Flash (free tier) + local MiniLM + local ChromaDB only. No paid/hosted embeddings or vector DBs, no non-Gemini LLM.
+1. **Zero cost.** Gemini 3.6 Flash (free tier) + local MiniLM + local ChromaDB only. No paid/hosted embeddings or vector DBs, no non-Gemini LLM.
 2. **MCP compliance.** All market data via a FastMCP `stdio` server. No direct `yfinance` in graph nodes.
 3. **Bounded cycles.** Critic retry loop hard-capped: `iteration_count >= 2 → PASS`.
 4. **Deterministic state reduction.** Concurrent writes merge via declared reducers — `rag_context` (`operator.add`), `market_data` (`operator.or_`). Nodes return partial state only.

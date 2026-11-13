@@ -1,2 +1,6 @@
-streamlit>=1.32.0
-requests>=2.31.0
+# Exact pins: unlike the backend (whose versions are frozen into the Docker
+# image at build time), this file is installed fresh by Streamlit Community
+# Cloud and by anyone running the UI locally. These are the versions the UI
+# was last verified against.
+streamlit==1.62.0
+requests==2.34.2
