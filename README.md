@@ -17,7 +17,7 @@ Autonomous multi-agent financial-auditing engine for the Indian capital markets 
 > The app shows the same notice at the top of the page.
 
 - **App:** https://dalalstreet-agent.streamlit.app/
-- **Backend API:** https://dalalstreet-agent-backend.nicemushroom-fed075ab.centralindia.azurecontainerapps.io (`GET /api/v1/health`)
+- **Backend API:** https://dalalstreet-agent-backend.jollydune-93323f57.centralindia.azurecontainerapps.io (`GET /api/v1/health`)
 
 ## Architecture
 
